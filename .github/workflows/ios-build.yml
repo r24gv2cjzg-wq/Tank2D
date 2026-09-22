@@ -15,11 +15,20 @@ jobs:
         with:
           xcode-version: 'latest-stable'
 
-      - name: Build App
+      - name: Find and Build App
         run: |
+          # Этот скрипт сам найдет файл проекта, даже если он лежит глубоко в папках
+          XCODEPROJ=$(find . -name "*.xcodeproj" | head -n 1)
+          PROJECT_DIR=$(dirname "$XCODEPROJ")
+          SCHEME_NAME=$(xcodebuild -list -project "$XCODEPROJ" | awk '/Schemes:/{flag=1;next}/^[[:space:]]*$/{flag=0}flag' | sed 's/^[[:space:]]*//' | head -n 1)
+          
+          echo "Найден проект: $XCODEPROJ"
+          echo "Найдена схема: $SCHEME_NAME"
+          
+          cd "$PROJECT_DIR"
           xcodebuild build \
-            -project *.xcodeproj \
-            -scheme Tank2D \
+            -project $(basename "$XCODEPROJ") \
+            -scheme "$SCHEME_NAME" \
             -sdk iphoneos \
             -configuration Release \
             CODE_SIGNING_ALLOWED=NO \
@@ -28,7 +37,8 @@ jobs:
       - name: Package IPA
         run: |
           mkdir Payload
-          cp -r ~/Library/Developer/Xcode/DerivedData/*/Build/Products/Release-iphoneos/*.app Payload/
+          # Ищем собранное приложение и упаковываем в IPA
+          find ~/Library/Developer/Xcode/DerivedData -name "*.app" -type d -exec cp -r {} Payload/ \;
           zip -r App.ipa Payload
 
       - name: Upload Artifact
