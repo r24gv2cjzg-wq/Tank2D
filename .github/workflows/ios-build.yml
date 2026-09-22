@@ -15,4 +15,4 @@ jobs:
           echo "--- ЧТО ЛЕЖИТ В КОРНЕ ---"
           ls -la
           echo "--- ПОЛНЫЙ ПОИСК XCODE ПРОЕКТОВ ---"
-          find . -name "*.xcodeproj
+          find . -name "*.xcodeproj"
