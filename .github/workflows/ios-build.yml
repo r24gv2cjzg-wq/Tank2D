@@ -10,9 +10,49 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Посмотреть файлы
+      - name: Unpack Project ZIP
         run: |
-          echo "--- ЧТО ЛЕЖИТ В КОРНЕ ---"
+          echo "Распаковываем архив игры..."
+          # Распаковываем твой ZIP-файл. Имя файла совпадает с тем, что ты скидывал.
+          unzip -o Tank2D_Codemagic_Ready.zip || unzip -o *.zip
+          echo "Содержимое после распаковки:"
           ls -la
-          echo "--- ПОЛНЫЙ ПОИСК XCODE ПРОЕКТОВ ---"
-          find . -name "*.xcodeproj"
+
+      - name: Find Project and Strip Code Signing
+        run: |
+          XCODEPROJ=$(find . -name "*.xcodeproj" | head -n 1)
+          PROJECT_DIR=$(dirname "$XCODEPROJ")
+          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+          echo "XCODEPROJ_NAME=$(basename "$XCODEPROJ")" >> $GITHUB_ENV
+          
+          SCHEME_NAME=$(xcodebuild -list -project "$XCODEPROJ" | awk '/Schemes:/{flag=1;next}/^[[:space:]]*$/{flag=0}flag' | sed 's/^[[:space:]]*//' | head -n 1)
+          echo "SCHEME_NAME=$SCHEME_NAME" >> $GITHUB_ENV
+          
+          sed -i '' 's/DevelopmentTeam = .*/DevelopmentTeam = "";/g' "$XCODEPROJ/project.pbxproj"
+          sed -i '' 's/ProvisioningStyle = Automatic;/ProvisioningStyle = Manual;/g' "$XCODEPROJ/project.pbxproj"
+          sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' "$XCODEPROJ/project.pbxproj"
+
+      - name: Build App
+        run: |
+          cd "$PROJECT_DIR"
+          xcodebuild build \
+            -project "$XCODEPROJ_NAME" \
+            -scheme "$SCHEME_NAME" \
+            -sdk iphoneos \
+            -configuration Release \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE_SPECIFIER=""
+
+      - name: Package IPA
+        run: |
+          mkdir Payload
+          find ~/Library/Developer/Xcode/DerivedData -name "*.app" -type d -exec cp -r {} Payload/ \;
+          zip -r App.ipa Payload
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-ipa
+          path: App.ipa
