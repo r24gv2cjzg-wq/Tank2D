@@ -10,59 +10,50 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Unpack Any ZIP Project
+      - name: Unpack Project ZIP
         run: |
-          echo "Ищем и распаковываем архив игры..."
-          # Скрипт найдет любой ZIP файл в репозитории и распакует его
           ZIP_FILE=$(find . -name "*.zip" | head -n 1)
-          if [ -z "$ZIP_FILE" ]; then
-            echo "Ошибка: ZIP-архив не найден в репозитории!" && exit 1
-          fi
-          echo "Распаковываем: $ZIP_FILE"
+          if [ -z "$ZIP_FILE" ]; then echo "ZIP не найден!" && exit 1; fi
           unzip -o "$ZIP_FILE"
-          echo "Содержимое после распаковки:"
-          ls -la
 
-      - name: Find Project and Strip Code Signing
+      - name: Patch Project for 3D and No-Sign
         run: |
-          XCODEPROJ=$(find . -name "*.xcodeproj" | head -n 1)
-          if [ -z "$XCODEPROJ" ]; then
-            echo "Ошибка: Файл .xcodeproj не найден внутри архива!" && exit 1
-          fi
+          XCODEPROJ=$(find . -name "Tank2D.xcodeproj" | head -n 1)
+          if [ -z "$XCODEPROJ" ]; then echo "Tank2D.xcodeproj не найден!" && exit 1; fi
           PROJECT_DIR=$(dirname "$XCODEPROJ")
           echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
-          echo "XCODEPROJ_NAME=$(basename "$XCODEPROJ")" >> $GITHUB_ENV
           
-          # Автоматически определяем первую попавшуюся схему приложения
-          SCHEME_NAME=$(xcodebuild -list -project "$XCODEPROJ" | awk '/Schemes:/{flag=1;next}/^[[:space:]]*$/{flag=0}flag' | sed 's/^[[:space:]]*//' | head -n 1)
-          echo "SCHEME_NAME=$SCHEME_NAME" >> $GITHUB_ENV
-          
-          # Вырезаем настройки подписи Apple
+          # Глубокая очистка подписи в файле проекта
           sed -i '' 's/DevelopmentTeam = .*/DevelopmentTeam = "";/g' "$XCODEPROJ/project.pbxproj"
           sed -i '' 's/ProvisioningStyle = Automatic;/ProvisioningStyle = Manual;/g' "$XCODEPROJ/project.pbxproj"
           sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' "$XCODEPROJ/project.pbxproj"
+          sed -i '' 's/CODE_SIGN_IDENTITY = .*/CODE_SIGN_IDENTITY = "";/g' "$XCODEPROJ/project.pbxproj"
+          
+          # Отключаем обязательную валидацию ассетов (критично для 3D)
+          sed -i '' 's/ASSETCATALOG_COMPILER_APPICON_NAME = .*/ASSETCATALOG_COMPILER_APPICON_NAME = "";/g' "$XCODEPROJ/project.pbxproj"
 
       - name: Build App
         run: |
           cd "$PROJECT_DIR"
+          
+          # Собираем строго схему Tank2D с отключением всех проверок подписи
           xcodebuild build \
-            -project "$XCODEPROJ_NAME" \
-            -scheme "$SCHEME_NAME" \
+            -project Tank2D.xcodeproj \
+            -scheme Tank2D \
             -sdk iphoneos \
             -configuration Release \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            PROVISIONING_PROFILE_SPECIFIER=""
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            COMPILER_INDEX_STORE_ENABLE=NO
 
       - name: Package IPA
         run: |
           mkdir -p Payload
-          # Находим скомпилированное приложение .app и копируем в Payload
           APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "*.app" -type d | head -n 1)
-          if [ -z "$APP_PATH" ]; then
-            echo "Ошибка: Скомпилированный .app файл не найден!" && exit 1
-          fi
+          if [ -z "$APP_PATH" ]; then echo ".app не найден!" && exit 1; fi
           cp -r "$APP_PATH" Payload/
           zip -r App.ipa Payload
 
