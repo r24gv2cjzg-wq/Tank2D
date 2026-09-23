@@ -1,3 +1,6 @@
+<<<<<<< HEAD
+ 
+=======
 name: iOS Build
 
 on:
@@ -56,3 +59,5 @@ jobs:
         with:
           name: unsigned-ipa
           path: App.ipa
+
+>>>>>>> bfa87ac61a7f2d3f37d2dd5b995ce1e39219e2d8
