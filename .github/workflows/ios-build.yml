@@ -23,21 +23,17 @@ jobs:
           PROJECT_DIR=$(dirname "$XCODEPROJ")
           echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
           
-          # Отключаем подпись намертво
           sed -i '' 's/DevelopmentTeam = .*/DevelopmentTeam = "";/g' "$XCODEPROJ/project.pbxproj"
           sed -i '' 's/ProvisioningStyle = Automatic;/ProvisioningStyle = Manual;/g' "$XCODEPROJ/project.pbxproj"
           sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' "$XCODEPROJ/project.pbxproj"
           sed -i '' 's/CODE_SIGN_IDENTITY = .*/CODE_SIGN_IDENTITY = "";/g' "$XCODEPROJ/project.pbxproj"
-          
-          # Понижаем строгость компилятора Swift, чтобы он пропускал мелкие баги
           sed -i '' 's/SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;/SWIFT_TREAT_WARNINGS_AS_ERRORS = NO;/g' "$XCODEPROJ/project.pbxproj"
 
       - name: Build App
         run: |
           cd "$PROJECT_DIR"
           
-          # Добавляем флаг SWIFT_SUPPRESS_WARNINGS=YES (подавлять предупреждения) 
-          # и принудительно выставляем версию iOS 15.0 для совместимости 2D/3D
+          # Запускаем сборку и сохраняем лог в файл build.log
           xcodebuild build \
             -project Tank2D.xcodeproj \
             -scheme Tank2D \
@@ -51,13 +47,27 @@ jobs:
             COMPILER_INDEX_STORE_ENABLE=NO \
             SWIFT_SUPPRESS_WARNINGS=YES \
             IPHONEOS_DEPLOYMENT_TARGET=15.0 \
-            GCC_WARN_INHIBIT_ALL_WARNINGS=YES
+            GCC_WARN_INHIBIT_ALL_WARNINGS=YES > build.log 2>&1 || true
+
+      - name: Показать только критические ошибки
+        run: |
+          cd "$PROJECT_DIR"
+          echo "=== СПИСОК КРИТИЧЕСКИХ ОШИБОК ==="
+          # Ищем в логе строки с ошибками компиляции Swift/Xcode
+          grep -i -E "error:|failed|fatal" build.log | tail -n 20
+          echo "================================="
+          
+          # Проверяем, создался ли вообще .app файл
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "*.app" -type d | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "Сборка завершилась неудачно из-за ошибок кода выше."
+            exit 1
+          fi
 
       - name: Package IPA
         run: |
           mkdir -p Payload
           APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "*.app" -type d | head -n 1)
-          if [ -z "$APP_PATH" ]; then echo ".app не найден!" && exit 1; fi
           cp -r "$APP_PATH" Payload/
           zip -r App.ipa Payload
 
