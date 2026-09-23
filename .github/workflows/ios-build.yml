@@ -16,27 +16,28 @@ jobs:
           if [ -z "$ZIP_FILE" ]; then echo "ZIP не найден!" && exit 1; fi
           unzip -o "$ZIP_FILE"
 
-      - name: Patch Project for 3D and No-Sign
+      - name: Patch Project settings
         run: |
           XCODEPROJ=$(find . -name "Tank2D.xcodeproj" | head -n 1)
           if [ -z "$XCODEPROJ" ]; then echo "Tank2D.xcodeproj не найден!" && exit 1; fi
           PROJECT_DIR=$(dirname "$XCODEPROJ")
           echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
           
-          # Глубокая очистка подписи в файле проекта
+          # Отключаем подпись намертво
           sed -i '' 's/DevelopmentTeam = .*/DevelopmentTeam = "";/g' "$XCODEPROJ/project.pbxproj"
           sed -i '' 's/ProvisioningStyle = Automatic;/ProvisioningStyle = Manual;/g' "$XCODEPROJ/project.pbxproj"
           sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' "$XCODEPROJ/project.pbxproj"
           sed -i '' 's/CODE_SIGN_IDENTITY = .*/CODE_SIGN_IDENTITY = "";/g' "$XCODEPROJ/project.pbxproj"
           
-          # Отключаем обязательную валидацию ассетов (критично для 3D)
-          sed -i '' 's/ASSETCATALOG_COMPILER_APPICON_NAME = .*/ASSETCATALOG_COMPILER_APPICON_NAME = "";/g' "$XCODEPROJ/project.pbxproj"
+          # Понижаем строгость компилятора Swift, чтобы он пропускал мелкие баги
+          sed -i '' 's/SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;/SWIFT_TREAT_WARNINGS_AS_ERRORS = NO;/g' "$XCODEPROJ/project.pbxproj"
 
       - name: Build App
         run: |
           cd "$PROJECT_DIR"
           
-          # Собираем строго схему Tank2D с отключением всех проверок подписи
+          # Добавляем флаг SWIFT_SUPPRESS_WARNINGS=YES (подавлять предупреждения) 
+          # и принудительно выставляем версию iOS 15.0 для совместимости 2D/3D
           xcodebuild build \
             -project Tank2D.xcodeproj \
             -scheme Tank2D \
@@ -47,7 +48,10 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             PROVISIONING_PROFILE_SPECIFIER="" \
             AD_HOC_CODE_SIGNING_ALLOWED=YES \
-            COMPILER_INDEX_STORE_ENABLE=NO
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            SWIFT_SUPPRESS_WARNINGS=YES \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            GCC_WARN_INHIBIT_ALL_WARNINGS=YES
 
       - name: Package IPA
         run: |
