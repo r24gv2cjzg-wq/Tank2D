@@ -1,6 +1,3 @@
-<<<<<<< HEAD
- 
-=======
 name: iOS Build
 
 on:
@@ -13,24 +10,34 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Unpack Project ZIP
+      - name: Unpack Any ZIP Project
         run: |
-          echo "Распаковываем архив игры..."
-          # Распаковываем твой ZIP-файл. Имя файла совпадает с тем, что ты скидывал.
-          unzip -o Tank2D_Codemagic_Ready.zip || unzip -o *.zip
+          echo "Ищем и распаковываем архив игры..."
+          # Скрипт найдет любой ZIP файл в репозитории и распакует его
+          ZIP_FILE=$(find . -name "*.zip" | head -n 1)
+          if [ -z "$ZIP_FILE" ]; then
+            echo "Ошибка: ZIP-архив не найден в репозитории!" && exit 1
+          fi
+          echo "Распаковываем: $ZIP_FILE"
+          unzip -o "$ZIP_FILE"
           echo "Содержимое после распаковки:"
           ls -la
 
       - name: Find Project and Strip Code Signing
         run: |
           XCODEPROJ=$(find . -name "*.xcodeproj" | head -n 1)
+          if [ -z "$XCODEPROJ" ]; then
+            echo "Ошибка: Файл .xcodeproj не найден внутри архива!" && exit 1
+          fi
           PROJECT_DIR=$(dirname "$XCODEPROJ")
           echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
           echo "XCODEPROJ_NAME=$(basename "$XCODEPROJ")" >> $GITHUB_ENV
           
+          # Автоматически определяем первую попавшуюся схему приложения
           SCHEME_NAME=$(xcodebuild -list -project "$XCODEPROJ" | awk '/Schemes:/{flag=1;next}/^[[:space:]]*$/{flag=0}flag' | sed 's/^[[:space:]]*//' | head -n 1)
           echo "SCHEME_NAME=$SCHEME_NAME" >> $GITHUB_ENV
           
+          # Вырезаем настройки подписи Apple
           sed -i '' 's/DevelopmentTeam = .*/DevelopmentTeam = "";/g' "$XCODEPROJ/project.pbxproj"
           sed -i '' 's/ProvisioningStyle = Automatic;/ProvisioningStyle = Manual;/g' "$XCODEPROJ/project.pbxproj"
           sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' "$XCODEPROJ/project.pbxproj"
@@ -50,8 +57,13 @@ jobs:
 
       - name: Package IPA
         run: |
-          mkdir Payload
-          find ~/Library/Developer/Xcode/DerivedData -name "*.app" -type d -exec cp -r {} Payload/ \;
+          mkdir -p Payload
+          # Находим скомпилированное приложение .app и копируем в Payload
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "*.app" -type d | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "Ошибка: Скомпилированный .app файл не найден!" && exit 1
+          fi
+          cp -r "$APP_PATH" Payload/
           zip -r App.ipa Payload
 
       - name: Upload Artifact
@@ -59,5 +71,3 @@ jobs:
         with:
           name: unsigned-ipa
           path: App.ipa
-
->>>>>>> bfa87ac61a7f2d3f37d2dd5b995ce1e39219e2d8
