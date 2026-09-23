@@ -16,13 +16,27 @@ jobs:
           if [ -z "$ZIP_FILE" ]; then echo "ZIP не найден!" && exit 1; fi
           unzip -o "$ZIP_FILE"
 
-      - name: Patch Project settings
+      - name: Auto-Detect Project and Patch Settings
         run: |
-          XCODEPROJ=$(find . -name "Tank2D.xcodeproj" | head -n 1)
-          if [ -z "$XCODEPROJ" ]; then echo "Tank2D.xcodeproj не найден!" && exit 1; fi
+          # Сам находит любой xcodeproj файл, как бы он ни назывался после обновления
+          XCODEPROJ=$(find . -name "*.xcodeproj" | head -n 1)
+          if [ -z "$XCODEPROJ" ]; then echo "Файл .xcodeproj не найден!" && exit 1; fi
           PROJECT_DIR=$(dirname "$XCODEPROJ")
-          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+          XCODEPROJ_NAME=$(basename "$XCODEPROJ")
           
+          # Автоматически вытаскиваем имя новой 3D схемы приложения
+          SCHEME_NAME=$(xcodebuild -list -project "$XCODEPROJ" | awk '/Schemes:/{flag=1;next}/^[[:space:]]*$/{flag=0}flag' | sed 's/^[[:space:]]*//' | head -n 1)
+          
+          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+          echo "XCODEPROJ_NAME=$XCODEPROJ_NAME" >> $GITHUB_ENV
+          echo "SCHEME_NAME=$SCHEME_NAME" >> $GITHUB_ENV
+          
+          echo "=== АВТООПРЕДЕЛЕНИЕ ==="
+          echo "Найден проект: $XCODEPROJ_NAME"
+          echo "Найдена схема: $SCHEME_NAME"
+          echo "======================="
+          
+          # Очищаем подпись под новые файлы
           sed -i '' 's/DevelopmentTeam = .*/DevelopmentTeam = "";/g' "$XCODEPROJ/project.pbxproj"
           sed -i '' 's/ProvisioningStyle = Automatic;/ProvisioningStyle = Manual;/g' "$XCODEPROJ/project.pbxproj"
           sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' "$XCODEPROJ/project.pbxproj"
@@ -33,10 +47,9 @@ jobs:
         run: |
           cd "$PROJECT_DIR"
           
-          # Запускаем сборку и сохраняем лог в файл build.log
           xcodebuild build \
-            -project Tank2D.xcodeproj \
-            -scheme Tank2D \
+            -project "$XCODEPROJ_NAME" \
+            -scheme "$SCHEME_NAME" \
             -sdk iphoneos \
             -configuration Release \
             CODE_SIGNING_ALLOWED=NO \
@@ -53,14 +66,12 @@ jobs:
         run: |
           cd "$PROJECT_DIR"
           echo "=== СПИСОК КРИТИЧЕСКИХ ОШИБОК ==="
-          # Ищем в логе строки с ошибками компиляции Swift/Xcode
           grep -i -E "error:|failed|fatal" build.log | tail -n 20
           echo "================================="
           
-          # Проверяем, создался ли вообще .app файл
           APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "*.app" -type d | head -n 1)
           if [ -z "$APP_PATH" ]; then
-            echo "Сборка завершилась неудачно из-за ошибок кода выше."
+            echo "Сборка завершилась неудачно из-за ошибок кода Swift выше."
             exit 1
           fi
 
